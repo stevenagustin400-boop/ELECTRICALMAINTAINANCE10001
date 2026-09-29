@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Balai de Selendra - Technical Facilities Document Management</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#eef2f6;color:#17202a}
+header{background:#1f2937;color:#fff;padding:18px 24px;display:flex;align-items:center;gap:16px}
+.logo{width:62px;height:62px;border:2px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:31px}
+h1,h2{margin:0 0 8px}.sub{color:#d7dde5}.wrap{max-width:1250px;margin:22px auto;padding:0 15px}
+.card{background:#fff;border-radius:10px;padding:20px;margin-bottom:18px;box-shadow:0 2px 8px #0001}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}label{font-size:13px;font-weight:bold}
+input,select,textarea{width:100%;padding:10px;margin-top:5px;border:1px solid #cbd5e1;border-radius:6px}
+textarea{min-height:85px;resize:vertical}.full{grid-column:1/-1}
+button{border:0;border-radius:6px;padding:9px 13px;background:#2563eb;color:white;cursor:pointer;margin:4px 3px 4px 0}
+.gray{background:#64748b}.red{background:#dc2626}.green{background:#15803d}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}.stat{background:#fff;padding:15px;border-radius:8px;text-align:center}.stat b{display:block;font-size:24px}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}th{background:#f8fafc}
+.file{font-size:12px}.actions{white-space:nowrap}.actions button{font-size:11px;padding:6px 8px}
+#search{margin:8px 0 12px}.hint{font-size:12px;color:#64748b}
+@media(max-width:850px){.grid,.stats{grid-template-columns:1fr}.full{grid-column:auto}table{display:block;overflow-x:auto}}
+@media print{button,#search,.stats,.entry{display:none!important}header{background:#fff;color:#000;border-bottom:2px solid #000}.sub{color:#333}}
+</style>
+</head>
+<body>
+<header>
+<div class="logo">⚙</div>
+<div><h1>BALAI DE SELENDRA</h1><div class="sub">Technical Facilities — Document & Service Management System</div></div>
+</header>
+<div class="wrap">
+
+<div class="stats">
+<div class="stat"><b id="total">0</b>Total Records</div>
+<div class="stat"><b id="maint">0</b>Maintenance</div>
+<div class="stat"><b id="delivery">0</b>Delivery</div>
+<div class="stat"><b id="follow">0</b>For Follow-up</div>
+</div>
+
+<div class="card entry">
+<h2>New Service / Document Record</h2>
+<p class="hint">Attach PDF, Word, Excel, images, receipts, quotations, or other documents. Files are stored in this browser on this computer.</p>
+<form id="form" class="grid">
+<div><label>Date</label><input type="date" id="date" required></div>
+<div><label>Time of Arrival</label><input type="time" id="arrival" required></div>
+<div><label>Time of Departure</label><input type="time" id="departure"></div>
+<div><label>Document Type</label><select id="type"><option>Maintenance Report</option><option>Delivery Report</option><option>Service Report</option><option>Inspection Report</option><option>Quotation</option><option>Incident Report</option><option>Other</option></select></div>
+<div><label>Company / Contractor</label><input id="company" placeholder="Otis, Converge, Globe, etc."></div>
+<div><label>Technician / Personnel</label><input id="technician" required></div>
+<div><label>Technician ID / Contact</label><input id="contact"></div>
+<div><label>Location / Unit / Equipment</label><input id="location" placeholder="Elevator 1, STP, Unit 302, etc."></div>
+<div><label>Result / Status</label><select id="status"><option>Completed</option><option>For Follow-up</option><option>Pending Quotation</option><option>Parts Required</option><option>Delivered</option><option>Pending</option></select></div>
+<div class="full"><label>Work Performed / Delivery Details</label><textarea id="details" required></textarea></div>
+<div class="full"><label>Findings / Remarks</label><textarea id="remarks"></textarea></div>
+<div class="full"><label>Attach Documents / Photos</label><input type="file" id="files" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.webp,.txt"></div>
+<div class="full">
+<button type="submit">💾 Save Record</button>
+<button type="button" class="gray" onclick="exportCSV()">Export CSV</button>
+<button type="button" class="gray" onclick="backup()">Backup Database</button>
+<button type="button" class="gray" onclick="restore()">Restore Database</button>
+<button type="button" class="gray" onclick="window.print()">Print</button>
+</div>
+</form>
+</div>
+
+<div class="card">
+<h2>Records & Documents</h2>
+<input id="search" placeholder="Search company, technician, date, document, equipment, or details..." oninput="render()">
+<table><thead><tr><th>Date</th><th>Arrival</th><th>Document</th><th>Company</th><th>Technician</th><th>Location</th><th>Status</th><th>Attachments</th><th>Actions</th></tr></thead>
+<tbody id="rows"></tbody></table>
+</div>
+</div>
+
+<script>
+const DB="BalaiDeSelendraTechDB", STORE="records";
+let records=[];
+
+function openDB(){
+ return new Promise((resolve,reject)=>{
+  const r=indexedDB.open(DB,1);
+  r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains(STORE))r.result.createObjectStore(STORE,{keyPath:"id"})};
+  r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error);
+ });
+}
+async function all(){const db=await openDB();return new Promise((res,rej)=>{let q=db.transaction(STORE,"readonly").objectStore(STORE).getAll();q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)})}
+async function put(x){const db=await openDB();return new Promise((res,rej)=>{let q=db.transaction(STORE,"readwrite").objectStore(STORE).put(x);q.onsuccess=()=>res();q.onerror=()=>rej(q.error)})}
+async function remove(id){const db=await openDB();return new Promise((res,rej)=>{let q=db.transaction(STORE,"readwrite").objectStore(STORE).delete(id);q.onsuccess=()=>res();q.onerror=()=>rej(q.error)})}
+
+async function init(){records=await all();date.value=new Date().toISOString().slice(0,10);render()}
+form.onsubmit=async e=>{
+ e.preventDefault();
+ const attachments=[];
+ for(const f of files.files){
+  attachments.push({name:f.name,type:f.type,size:f.size,data:await blobToDataURL(f)});
+ }
+ await put({id:crypto.randomUUID(),date:date.value,arrival:arrival.value,departure:departure.value,type:type.value,
+ company:company.value,technician:technician.value,contact:contact.value,location:location.value,status:status.value,
+ details:details.value,remarks:remarks.value,attachments,created:new Date().toISOString()});
+ records=await all();render();form.reset();date.value=new Date().toISOString().slice(0,10);alert("Record saved successfully.");
+};
+function blobToDataURL(blob){return new Promise(r=>{const x=new FileReader();x.onload=()=>r(x.result);x.readAsDataURL(blob)})}
+function esc(s){return String(s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+function render(){
+ const q=search.value.toLowerCase();
+ let a=records.filter(r=>Object.values(r).join(" ").toLowerCase().includes(q)).sort((x,y)=>y.id.localeCompare(x.id));
+ rows.innerHTML=a.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.arrival)}</td><td>${esc(r.type)}</td><td>${esc(r.company)}</td><td>${esc(r.technician)}</td><td>${esc(r.location)}</td><td>${esc(r.status)}</td><td class="file">${r.attachments?.length||0} file(s)<br>${(r.attachments||[]).map((f,i)=>`<button class="green" onclick="downloadFile('${r.id}',${i})">${esc(f.name)}</button>`).join("")}</td><td class="actions"><button onclick="view('${r.id}')">View</button><button class="red" onclick="delRec('${r.id}')">Delete</button></td></tr>`).join("");
+ total.textContent=records.length;maint.textContent=records.filter(r=>r.type==="Maintenance Report").length;delivery.textContent=records.filter(r=>r.type==="Delivery Report").length;follow.textContent=records.filter(r=>r.status==="For Follow-up").length;
+}
+function view(id){
+ const r=records.find(x=>x.id===id); if(!r)return;
+ const w=window.open("","_blank");
+ w.document.write(`<html><head><title>Balai de Selendra Report</title><style>body{font-family:Arial;padding:35px}h1{text-align:center}table{width:100%;border-collapse:collapse}td{padding:9px;border:1px solid #ccc}td:first-child{font-weight:bold;width:25%}@media print{button{display:none}}</style></head><body><h1>BALAI DE SELENDRA</h1><h3 style="text-align:center">Technical Facilities Service Record</h3><table>
+ <tr><td>Date</td><td>${esc(r.date)}</td></tr><tr><td>Arrival / Departure</td><td>${esc(r.arrival)} / ${esc(r.departure)}</td></tr><tr><td>Document Type</td><td>${esc(r.type)}</td></tr><tr><td>Company</td><td>${esc(r.company)}</td></tr><tr><td>Technician</td><td>${esc(r.technician)}</td></tr><tr><td>ID / Contact</td><td>${esc(r.contact)}</td></tr><tr><td>Location / Equipment</td><td>${esc(r.location)}</td></tr><tr><td>Status</td><td>${esc(r.status)}</td></tr><tr><td>Work / Delivery Details</td><td>${esc(r.details).replace(/\n/g,"<br>")}</td></tr><tr><td>Findings / Remarks</td><td>${esc(r.remarks).replace(/\n/g,"<br>")}</td></tr></table><p>Attachments: ${(r.attachments||[]).map(f=>esc(f.name)).join(", ")||"None"}</p><button onclick="window.print()">Print</button></body></html>`);
+ w.document.close();
+}
+async function downloadFile(id,i){const r=records.find(x=>x.id===id),f=r.attachments[i];const a=document.createElement("a");a.href=f.data;a.download=f.name;a.click()}
+async function delRec(id){if(confirm("Delete this record and its attached documents?")){await remove(id);records=await all();render()}}
+function exportCSV(){
+ const head=["Date","Arrival","Departure","Document Type","Company","Technician","ID/Contact","Location","Status","Work/Delivery Details","Remarks","Attachments"];
+ const data=[head,...records.map(r=>[r.date,r.arrival,r.departure,r.type,r.company,r.technician,r.contact,r.location,r.status,r.details,r.remarks,(r.attachments||[]).map(f=>f.name).join(" | ")])];
+ const csv=data.map(row=>row.map(v=>`"${String(v||"").replace(/"/g,'""')}"`).join(",")).join("\n");
+ const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="Balai_de_Selendra_Technical_Records.csv";a.click();
+}
+function backup(){
+ const data=JSON.stringify(records);
+ const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([data],{type:"application/json"}));a.download="Balai_de_Selendra_Technical_Backup.json";a.click();
+}
+function restore(){
+ const x=document.createElement("input");x.type="file";x.accept=".json";x.onchange=async()=>{
+  const text=await x.files[0].text();try{const arr=JSON.parse(text);for(const r of arr)await put(r);records=await all();render();alert("Database restored.");}catch(e){alert("Invalid backup file.")}};
+ x.click();
+}
+init();
+</script>
+</body>
+</html>
